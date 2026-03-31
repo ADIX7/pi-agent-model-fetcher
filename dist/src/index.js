@@ -1,9 +1,9 @@
-/// <reference path="./types.d.ts" />
 import { streamSimpleOpenAICompletions, } from "@mariozechner/pi-ai";
-function parseSettings(ctx) {
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
+function parseSettings() {
     try {
         const fs = require("fs");
-        const agentDir = ctx.getAgentDir?.() || ctx.ui.cwd;
+        const agentDir = getAgentDir();
         const settingsPath = `${agentDir}/settings.json`;
         const content = fs.readFileSync(settingsPath, "utf-8");
         return JSON.parse(content);
@@ -35,7 +35,7 @@ export default function (pi) {
         };
     }
     pi.on("session_start", async (_event, ctx) => {
-        const settings = parseSettings(ctx);
+        const settings = parseSettings();
         if (!settings?.vllm?.baseUrl) {
             ctx.ui.notify("vLLM configuration not found in settings.json. Add a 'vllm' section with 'baseUrl'.", "error");
             return;
@@ -45,7 +45,7 @@ export default function (pi) {
             ctx.ui.notify("Fetching vLLM models...", "info");
             const modelData = await fetchVLLMModels(baseUrl, apiKey);
             if (modelData.length === 0) {
-                ctx.ui.notify("No models found on vLLM instance.", "warn");
+                ctx.ui.notify("No models found on vLLM instance.", "warning");
                 return;
             }
             const models = modelData.map((m) => ({
@@ -53,10 +53,12 @@ export default function (pi) {
                 name: m.id,
                 api: "openai-completions",
                 provider: "vllm",
-                contextWindow: undefined,
-                maxTokens: undefined,
+                baseUrl,
+                reasoning: false,
+                contextWindow: 128000,
+                maxTokens: 8192,
                 input: ["text"],
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             }));
             const streamFn = createStreamWrapper(apiKey);
             pi.registerProvider("vllm", {

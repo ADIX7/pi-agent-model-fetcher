@@ -5,6 +5,7 @@ import {
   type Model,
   type SimpleStreamOptions,
 } from "@mariozechner/pi-ai";
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 interface Settings {
@@ -23,10 +24,10 @@ interface VLLMModelInfo {
 
 
 
-function parseSettings(ctx: ExtensionContext): Settings | null {
+function parseSettings(): Settings | null {
   try {
     const fs = require("fs");
-    const agentDir = ctx.getAgentDir?.() || ctx.ui.cwd;
+    const agentDir = getAgentDir();
     const settingsPath = `${agentDir}/settings.json`;
     const content = fs.readFileSync(settingsPath, "utf-8");
     return JSON.parse(content) as Settings;
@@ -56,7 +57,7 @@ async function fetchVLLMModels(baseUrl: string, apiKey?: string): Promise<VLLMMo
 
 export default function (pi: ExtensionAPI) {
   function createStreamWrapper(apiKey?: string) {
-    return (model: Model, context: Context, options?: SimpleStreamOptions) => {
+    return (model: Model<Api>, context: Context, options?: SimpleStreamOptions) => {
       return streamSimpleOpenAICompletions(model as any, context, {
         ...options,
         apiKey: apiKey ?? options?.apiKey,
@@ -65,7 +66,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
-    const settings = parseSettings(ctx);
+    const settings = parseSettings();
 
     if (!settings?.vllm?.baseUrl) {
       ctx.ui.notify("vLLM configuration not found in settings.json. Add a 'vllm' section with 'baseUrl'.", "error");
@@ -79,7 +80,7 @@ export default function (pi: ExtensionAPI) {
       const modelData = await fetchVLLMModels(baseUrl, apiKey);
 
       if (modelData.length === 0) {
-        ctx.ui.notify("No models found on vLLM instance.", "warn");
+        ctx.ui.notify("No models found on vLLM instance.", "warning");
         return;
       }
 
@@ -88,10 +89,12 @@ export default function (pi: ExtensionAPI) {
         name: m.id,
         api: "openai-completions" as Api,
         provider: "vllm",
-        contextWindow: undefined,
-        maxTokens: undefined,
+        baseUrl,
+        reasoning: false,
+        contextWindow: 128000,
+        maxTokens: 8192,
         input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       }));
 
       const streamFn = createStreamWrapper(apiKey);
