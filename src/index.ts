@@ -7,8 +7,6 @@ import {
 } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-const SETTINGS_PATH = "~/.pi/agent/settings.json";
-
 interface Settings {
   vllm?: {
     baseUrl: string;
@@ -23,16 +21,13 @@ interface VLLMModelInfo {
   owned_by: string;
 }
 
-interface VLLMListResponse {
-  object: "list";
-  data: VLLMModelInfo[];
-}
+
 
 function parseSettings(ctx: ExtensionContext): Settings | null {
   try {
     const fs = require("fs");
-    const path = require("path");
-    const settingsPath = path.resolve(ctx.ui.cwd, SETTINGS_PATH.replace("~", require("os").homedir()));
+    const agentDir = ctx.getAgentDir?.() || ctx.ui.cwd;
+    const settingsPath = `${agentDir}/settings.json`;
     const content = fs.readFileSync(settingsPath, "utf-8");
     return JSON.parse(content) as Settings;
   } catch (error) {
@@ -55,23 +50,21 @@ async function fetchVLLMModels(baseUrl: string, apiKey?: string): Promise<VLLMMo
     throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<VLLMListResponse>;
+  return response.json() as Promise<VLLMModelInfo[]>;
 }
 
 
 export default function (pi: ExtensionAPI) {
-  // Store settings for use in stream wrapper
-  let vllmSettings: { baseUrl: string; apiKey?: string } | null = null;
-
-  function createStreamWrapper(baseUrl: string, apiKey?: string) {
-    return (model: Model<Api>, context: Context, options?: SimpleStreamOptions) => {
-      return streamSimpleOpenAICompletions(model, context, {
+  function createStreamWrapper(apiKey?: string) {
+    return (model: Model, context: Context, options?: SimpleStreamOptions) => {
+      return streamSimpleOpenAICompletions(model as any, context, {
         ...options,
         apiKey: apiKey ?? options?.apiKey,
       });
     };
   }
-  pi.on("session_start", async (_event, ctx) => {
+
+  pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
     const settings = parseSettings(ctx);
 
     if (!settings?.vllm?.baseUrl) {
@@ -85,22 +78,23 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("Fetching vLLM models...", "info");
       const modelData = await fetchVLLMModels(baseUrl, apiKey);
 
-      if (modelData.data.length === 0) {
+      if (modelData.length === 0) {
         ctx.ui.notify("No models found on vLLM instance.", "warn");
         return;
       }
 
-      const models: Model<Api>[] = modelData.data.map((m) => ({
+      const models: Model<Api>[] = modelData.map((m) => ({
         id: m.id,
         name: m.id,
+        api: "openai-completions" as Api,
+        provider: "vllm",
         contextWindow: undefined,
         maxTokens: undefined,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       }));
 
-      vllmSettings = { baseUrl, apiKey };
-      const streamFn = createStreamWrapper(baseUrl, apiKey);
+      const streamFn = createStreamWrapper(apiKey);
 
       pi.registerProvider("vllm", {
         baseUrl,
