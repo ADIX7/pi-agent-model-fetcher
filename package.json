@@ -1,0 +1,16 @@
+{
+  "name": "pi-vllm-model-fetcher",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi agent plugin that fetches models from a local vLLM instance",
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "echo 'nothing to check'"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
