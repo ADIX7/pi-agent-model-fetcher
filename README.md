@@ -1,6 +1,6 @@
 # vLLM Model Fetcher Plugin
 
-A pi agent plugin that connects to a locally hosted vLLM instance, queries available models, and dynamically registers them as providers.
+A pi agent plugin that connects to a locally hosted vLLM instance, queries available models, and dynamically registers them as providers using the OpenAI-compatible streaming API.
 
 ## Configuration
 
@@ -30,7 +30,7 @@ Add the following to your `~/.pi/agent/settings.json`:
 The plugin will:
 - Fetch available models from `GET /v1/models`
 - Register them under the `vllm/` provider prefix
-- Show a notification with the list of available models
+- Use `streamSimpleOpenAICompletions` for streaming responses
 
 ## Example
 
@@ -48,6 +48,13 @@ vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct
 - **Error: "vLLM configuration not found"**: Add `vllm` section to `~/.pi/agent/settings.json`
 - **Error: "Failed to connect to vLLM"**: Check that your vLLM instance is running and the URL is correct
 - **Error: "No models found"**: Your vLLM instance has no models loaded
+
+## How It Works
+
+1. On `session_start`, reads `~/.pi/agent/settings.json`
+2. Fetches models from `{baseUrl}/v1/models`
+3. Wraps `streamSimpleOpenAICompletions` to inject the vLLM API key
+4. Registers provider with all discovered models
 
 ## License
 
