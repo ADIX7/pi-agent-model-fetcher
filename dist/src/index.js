@@ -26,19 +26,12 @@ async function fetchVLLMModels(baseUrl, apiKey) {
     return response.json().then(r => r.data);
 }
 export default function (pi) {
-    // Track registered server names for cleanup
-    const registeredServers = new Set();
     async function registerRemoteProviders(ctx) {
         const settings = parseSettings();
         if (!settings?.["remote-providers"]) {
             ctx.ui.notify("No remote-providers configured in settings.json.", "error");
             return;
         }
-        // Unregister existing providers first
-        for (const serverName of registeredServers) {
-            pi.unregisterProvider(serverName);
-        }
-        registeredServers.clear();
         const requiredErrors = [];
         const optionalErrors = [];
         for (const [serverName, config] of Object.entries(settings["remote-providers"])) {
@@ -64,6 +57,8 @@ export default function (pi) {
                     reasoning: false,
                     input: ["text"],
                     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 200000,
+                    maxTokens: 8192,
                 }));
                 const streamFn = createStreamWrapper(config.apiKey);
                 pi.registerProvider(serverName, {
@@ -73,7 +68,6 @@ export default function (pi) {
                     models,
                     streamSimple: streamFn,
                 });
-                registeredServers.add(serverName);
                 ctx.ui.notify(`${serverName}: Registered ${models.length} model(s)`, "info");
             }
             catch (error) {
@@ -107,16 +101,10 @@ export default function (pi) {
         await registerRemoteProviders(ctx);
     });
     // Reload command
-    pi.defineCommand({
-        name: "reload-remote-providers",
+    pi.registerCommand("reload-remote-providers", {
         description: "Reload remote vLLM providers without restart",
-        handler: async () => {
-            const context = pi.getContext();
-            if (!context) {
-                console.error("Extension context not available");
-                return;
-            }
-            await registerRemoteProviders(context);
+        handler: async (_args, ctx) => {
+            await registerRemoteProviders(ctx);
         },
     });
 }

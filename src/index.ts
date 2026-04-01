@@ -66,8 +66,6 @@ async function fetchVLLMModels(
 }
 
 export default function (pi: ExtensionAPI) {
-  // Track registered server names for cleanup
-  const registeredServers = new Set<string>();
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
@@ -79,12 +77,6 @@ export default function (pi: ExtensionAPI) {
       );
       return;
     }
-
-    // Unregister existing providers first
-    for (const serverName of registeredServers) {
-      pi.unregisterProvider(serverName);
-    }
-    registeredServers.clear();
 
     const requiredErrors: string[] = [];
     const optionalErrors: string[] = [];
@@ -129,8 +121,6 @@ export default function (pi: ExtensionAPI) {
           streamSimple: streamFn,
         });
 
-        registeredServers.add(serverName);
-
         ctx.ui.notify(
           `${serverName}: Registered ${models.length} model(s)`,
           "info",
@@ -173,16 +163,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Reload command
-  pi.defineCommand({
-    name: "reload-remote-providers",
+  pi.registerCommand("reload-remote-providers", {
     description: "Reload remote vLLM providers without restart",
-    handler: async () => {
-      const context = pi.getContext();
-      if (!context) {
-        console.error("Extension context not available");
-        return;
-      }
-      await registerRemoteProviders(context);
+    handler: async (_args, ctx) => {
+      await registerRemoteProviders(ctx);
     },
   });
 }

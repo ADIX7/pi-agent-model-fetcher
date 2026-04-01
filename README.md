@@ -34,7 +34,7 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 1. Start your vLLM instances
 2. Configure `settings.json` with all server endpoints
-3. Restart pi agent or run `/reload`
+3. Restart pi agent or run `/reload-remote-providers`
 4. Use `/model` to select from available providers
 
 The plugin will:
@@ -77,11 +77,31 @@ Set `optional: true` for providers that shouldn't block startup if unavailable:
 
 With `optional: true`, the backup provider will be skipped silently if unreachable, without showing error notifications.
 
+## Reload Providers
+
+You can reload remote providers without restarting the pi agent:
+
+```bash
+/reload-remote-providers
+```
+
+This command:
+- Re-reads `settings.json`
+- Re-fetches models from all configured servers
+- Re-registers providers with updated models
+- Shows notifications for any errors
+
+Use this after:
+- Adding/removing servers from `settings.json`
+- Loading/unloading models on remote servers
+- Updating API keys
+
 ## Troubleshooting
 
 - **Error: "No remote-providers configured"**: Add `remote-providers` object to `~/.pi/agent/settings.json`
 - **Error: "Failed to register N server(s)"**: Check that unreachable servers are running and URLs are correct
 - **Warning: "No models found"**: Server is reachable but has no models loaded
+- **Reload not working**: Ensure you're using pi agent version 0.51+ which supports custom commands
 
 ## How It Works
 
