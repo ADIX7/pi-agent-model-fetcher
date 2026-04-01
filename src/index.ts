@@ -66,20 +66,10 @@ async function fetchVLLMModels(
 }
 
 export default function (pi: ExtensionAPI) {
-  function createStreamWrapper(apiKey?: string) {
-    return (
-      model: Model<Api>,
-      context: Context,
-      options?: SimpleStreamOptions,
-    ) => {
-      return streamSimpleOpenAICompletions(model as any, context, {
-        ...options,
-        apiKey: apiKey ?? options?.apiKey ?? "placeholder",
-      });
-    };
-  }
+  // Track registered server names for cleanup
+  const registeredServers = new Set<string>();
 
-  pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
+  async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
 
     if (!settings?.["remote-providers"]) {
@@ -89,6 +79,12 @@ export default function (pi: ExtensionAPI) {
       );
       return;
     }
+
+    // Unregister existing providers first
+    for (const serverName of registeredServers) {
+      pi.unregisterProvider(serverName);
+    }
+    registeredServers.clear();
 
     const requiredErrors: string[] = [];
     const optionalErrors: string[] = [];
@@ -119,8 +115,6 @@ export default function (pi: ExtensionAPI) {
           provider: serverName,
           baseUrl: config.url,
           reasoning: false,
-          contextWindow: 128000,
-          maxTokens: 8192,
           input: ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         }));
@@ -134,6 +128,8 @@ export default function (pi: ExtensionAPI) {
           models,
           streamSimple: streamFn,
         });
+
+        registeredServers.add(serverName);
 
         ctx.ui.notify(
           `${serverName}: Registered ${models.length} model(s)`,
@@ -156,5 +152,37 @@ export default function (pi: ExtensionAPI) {
       }
       ctx.ui.notify(message, "error");
     }
+  }
+
+  function createStreamWrapper(apiKey?: string) {
+    return (
+      model: Model<Api>,
+      context: Context,
+      options?: SimpleStreamOptions,
+    ) => {
+      return streamSimpleOpenAICompletions(model as any, context, {
+        ...options,
+        apiKey: apiKey ?? options?.apiKey ?? "placeholder",
+      });
+    };
+  }
+
+  // Register providers from settings
+  pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
+    await registerRemoteProviders(ctx);
+  });
+
+  // Reload command
+  pi.defineCommand({
+    name: "reload-remote-providers",
+    description: "Reload remote vLLM providers without restart",
+    handler: async () => {
+      const context = pi.getContext();
+      if (!context) {
+        console.error("Extension context not available");
+        return;
+      }
+      await registerRemoteProviders(context);
+    },
   });
 }

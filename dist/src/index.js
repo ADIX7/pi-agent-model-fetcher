@@ -26,20 +26,19 @@ async function fetchVLLMModels(baseUrl, apiKey) {
     return response.json().then(r => r.data);
 }
 export default function (pi) {
-    function createStreamWrapper(apiKey) {
-        return (model, context, options) => {
-            return streamSimpleOpenAICompletions(model, context, {
-                ...options,
-                apiKey: apiKey ?? options?.apiKey ?? "placeholder",
-            });
-        };
-    }
-    pi.on("session_start", async (_event, ctx) => {
+    // Track registered server names for cleanup
+    const registeredServers = new Set();
+    async function registerRemoteProviders(ctx) {
         const settings = parseSettings();
         if (!settings?.["remote-providers"]) {
             ctx.ui.notify("No remote-providers configured in settings.json.", "error");
             return;
         }
+        // Unregister existing providers first
+        for (const serverName of registeredServers) {
+            pi.unregisterProvider(serverName);
+        }
+        registeredServers.clear();
         const requiredErrors = [];
         const optionalErrors = [];
         for (const [serverName, config] of Object.entries(settings["remote-providers"])) {
@@ -63,8 +62,6 @@ export default function (pi) {
                     provider: serverName,
                     baseUrl: config.url,
                     reasoning: false,
-                    contextWindow: 128000,
-                    maxTokens: 8192,
                     input: ["text"],
                     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
                 }));
@@ -76,6 +73,7 @@ export default function (pi) {
                     models,
                     streamSimple: streamFn,
                 });
+                registeredServers.add(serverName);
                 ctx.ui.notify(`${serverName}: Registered ${models.length} model(s)`, "info");
             }
             catch (error) {
@@ -95,6 +93,31 @@ export default function (pi) {
             }
             ctx.ui.notify(message, "error");
         }
+    }
+    function createStreamWrapper(apiKey) {
+        return (model, context, options) => {
+            return streamSimpleOpenAICompletions(model, context, {
+                ...options,
+                apiKey: apiKey ?? options?.apiKey ?? "placeholder",
+            });
+        };
+    }
+    // Register providers from settings
+    pi.on("session_start", async (_event, ctx) => {
+        await registerRemoteProviders(ctx);
+    });
+    // Reload command
+    pi.defineCommand({
+        name: "reload-remote-providers",
+        description: "Reload remote vLLM providers without restart",
+        handler: async () => {
+            const context = pi.getContext();
+            if (!context) {
+                console.error("Extension context not available");
+                return;
+            }
+            await registerRemoteProviders(context);
+        },
     });
 }
 //# sourceMappingURL=index.js.map

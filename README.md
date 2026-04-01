@@ -10,11 +10,11 @@ Add the following to your `~/.pi/agent/settings.json`:
 {
   "remote-providers": {
     "local": {
-      "baseUrl": "http://localhost:8000",
+      "url": "http://localhost:8000",
       "apiKey": "your-api-key"
     },
     "remote-cluster": {
-      "baseUrl": "https://vllm.company.com",
+      "url": "https://vllm.company.com",
       "apiKey": "another-key"
     }
   }
@@ -25,8 +25,9 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 - `remote-providers` (required): Object with server names as keys
   - Each server config contains:
-    - `baseUrl` (required): The URL of your vLLM instance
+    - `url` (required): The URL of your vLLM instance
     - `apiKey` (optional): API key for authentication
+    - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
 - Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
 
 ## Usage
@@ -53,6 +54,28 @@ vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000
 # Select from: local/meta-llama/Meta-Llama-3.1-8B-Instruct
 #              remote-cluster/other-model
 ```
+
+### Optional Providers
+
+Set `optional: true` for providers that shouldn't block startup if unavailable:
+
+```json
+{
+  "remote-providers": {
+    "local": {
+      "url": "http://localhost:8000",
+      "apiKey": "your-api-key"
+    },
+    "backup": {
+      "url": "https://backup-vllm.example.com",
+      "apiKey": "backup-key",
+      "optional": true
+    }
+  }
+}
+```
+
+With `optional: true`, the backup provider will be skipped silently if unreachable, without showing error notifications.
 
 ## Troubleshooting
 
