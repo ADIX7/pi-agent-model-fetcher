@@ -28,6 +28,7 @@ interface VLLMModelInfo {
   object: "model";
   created: number;
   owned_by: string;
+  max_model_len?: number; // Optional: context window size from vLLM
 }
 
 function parseSettings(): Settings | null {
@@ -107,6 +108,8 @@ export default function (pi: ExtensionAPI) {
           provider: serverName,
           baseUrl: config.url,
           reasoning: false,
+          contextWindow: m.max_model_len ?? 128000, // Use server value or 128k default
+          maxTokens: 16384, // Default max tokens per generation
           input: ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         }));
