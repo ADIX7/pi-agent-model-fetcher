@@ -1,6 +1,6 @@
-# vLLM Model Fetcher Plugin
+# Remote vLLM Provider Plugin
 
-A pi agent plugin that connects to a locally hosted vLLM instance, queries available models, and dynamically registers them as providers using the OpenAI-compatible streaming API.
+A pi agent plugin that connects to multiple vLLM instances, queries available models from each, and dynamically registers them as providers using the OpenAI-compatible streaming API.
 
 ## Configuration
 
@@ -8,53 +8,67 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 ```json
 {
-  "vllm": {
-    "baseUrl": "http://localhost:8000",
-    "apiKey": "your-api-key"
+  "remote-providers": {
+    "local": {
+      "baseUrl": "http://localhost:8000",
+      "apiKey": "your-api-key"
+    },
+    "remote-cluster": {
+      "baseUrl": "https://vllm.company.com",
+      "apiKey": "another-key"
+    }
   }
 }
 ```
 
 ### Fields
 
-- `baseUrl` (required): The URL of your vLLM instance (e.g., `http://localhost:8000`)
-- `apiKey` (optional): API key for authentication with your vLLM instance
+- `remote-providers` (required): Object with server names as keys
+  - Each server config contains:
+    - `baseUrl` (required): The URL of your vLLM instance
+    - `apiKey` (optional): API key for authentication
+- Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
 
 ## Usage
 
-1. Ensure your vLLM instance is running and accessible
-2. Configure `settings.json` as shown above
-3. Restart pi agent or run `/reload` to load the plugin
-4. Use `/model` to select a vLLM model
+1. Start your vLLM instances
+2. Configure `settings.json` with all server endpoints
+3. Restart pi agent or run `/reload`
+4. Use `/model` to select from available providers
 
 The plugin will:
-- Fetch available models from `GET /v1/models`
-- Register them under the `vllm/` provider prefix
-- Use `streamSimpleOpenAICompletions` for streaming responses
+- Fetch available models from each server's `GET /v1/models`
+- Register each server as a distinct provider
+- Skip servers with no models
+- Report errors for unreachable servers
 
 ## Example
 
 ```bash
-# Start vLLM
-vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct
+# Start local vLLM
+vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --port 8000
 
-# In pi agent, run:
+# In pi agent:
 /model
-# Select: vllm/meta-llama/Meta-Llama-3.1-8B-Instruct
+# Select from: local/meta-llama/Meta-Llama-3.1-8B-Instruct
+#              remote-cluster/other-model
 ```
 
 ## Troubleshooting
 
-- **Error: "vLLM configuration not found"**: Add `vllm` section to `~/.pi/agent/settings.json`
-- **Error: "Failed to connect to vLLM"**: Check that your vLLM instance is running and the URL is correct
-- **Error: "No models found"**: Your vLLM instance has no models loaded
+- **Error: "No remote-providers configured"**: Add `remote-providers` object to `~/.pi/agent/settings.json`
+- **Error: "Failed to register N server(s)"**: Check that unreachable servers are running and URLs are correct
+- **Warning: "No models found"**: Server is reachable but has no models loaded
 
 ## How It Works
 
 1. On `session_start`, reads `~/.pi/agent/settings.json`
-2. Fetches models from `{baseUrl}/v1/models`
-3. Wraps `streamSimpleOpenAICompletions` to inject the vLLM API key
-4. Registers provider with all discovered models
+2. Iterates over `remote-providers` object
+3. Fetches models from each server's `/v1/models` endpoint
+4. Skips servers with no models (warning only)
+5. Wraps `streamSimpleOpenAICompletions` with server-specific API key
+6. Registers each server as a distinct provider
+7. Shows error notification if any servers fail
 
 ## License
 
