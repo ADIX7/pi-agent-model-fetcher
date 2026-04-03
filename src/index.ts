@@ -11,10 +11,22 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
+interface ModelOptions {
+  maxTokens?: number;
+  contextWindow?: number;
+  reasoning?: boolean;
+  input?: Array<"text" | "image">;
+}
+
+type ModelOptionsMap = {
+  [pattern: string]: ModelOptions;
+};
+
 interface ServerConfig {
   url: string;
   apiKey?: string;
   optional?: boolean;
+  modelOptions?: ModelOptionsMap;
 }
 
 interface Settings {
@@ -22,6 +34,7 @@ interface Settings {
     providers: {
       [name: string]: ServerConfig;
     };
+    modelOptions?: ModelOptionsMap;
   };
 }
 
@@ -68,6 +81,36 @@ async function fetchVLLMModels(
   return response.json().then(r => r.data) as Promise<VLLMModelInfo[]>;
 }
 
+function matchPatterns(
+  modelId: string,
+  patterns: ModelOptionsMap,
+): ModelOptions[] {
+  return Object.entries(patterns)
+    .filter(([pattern]) => {
+      if (pattern === modelId) {
+        return true;
+      }
+
+      if (pattern.endsWith("/*")) {
+        const prefix = pattern.slice(0, -2);
+        return modelId.startsWith(`${prefix}/`);
+      }
+
+      return false;
+    })
+    .map(([, options]) => options);
+}
+
+function mergeOptions(
+  base: ModelOptions,
+  override: ModelOptions,
+): ModelOptions {
+  return {
+    ...base,
+    ...override,
+  };
+}
+
 export default function (pi: ExtensionAPI) {
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
@@ -103,18 +146,43 @@ export default function (pi: ExtensionAPI) {
           continue;
         }
 
-        const models: Model<Api>[] = modelData.map((m) => ({
-          id: m.id,
-          name: m.id,
-          api: "openai-completions" as Api,
-          provider: serverName,
-          baseUrl: config.url,
-          reasoning: false,
-          contextWindow: m.max_model_len ?? 128000, // Use server value or 128k default
-          maxTokens: 16384, // Default max tokens per generation
-          input: ["text"],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        }));
+        const globalModelOptions =
+          settings["remote-providers"]?.modelOptions ?? {};
+
+        const models: Model<Api>[] = modelData.map((m) => {
+          const defaults: ModelOptions = {
+            maxTokens: 16384,
+            reasoning: false,
+            input: ["text"],
+            contextWindow: 128000,
+          };
+
+          const globalOptions = matchPatterns(m.id, globalModelOptions).reduce(
+            mergeOptions,
+            {},
+          );
+          const providerOptions = matchPatterns(
+            m.id,
+            config.modelOptions ?? {},
+          ).reduce(mergeOptions, {});
+          const finalOptions = mergeOptions(
+            mergeOptions(defaults, globalOptions),
+            providerOptions,
+          );
+
+          return {
+            id: m.id,
+            name: m.id,
+            api: "openai-completions" as Api,
+            provider: serverName,
+            baseUrl: config.url,
+            reasoning: finalOptions.reasoning ?? false,
+            contextWindow: finalOptions.contextWindow ?? 128000,
+            maxTokens: finalOptions.maxTokens ?? 16384,
+            input: finalOptions.input ?? ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          };
+        });
 
         const streamFn = createStreamWrapper(config.apiKey);
 

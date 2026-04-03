@@ -25,16 +25,36 @@ async function fetchVLLMModels(baseUrl, apiKey) {
     }
     return response.json().then(r => r.data);
 }
+function matchPatterns(modelId, patterns) {
+    return Object.entries(patterns)
+        .filter(([pattern]) => {
+        if (pattern === modelId) {
+            return true;
+        }
+        if (pattern.endsWith("/*")) {
+            const prefix = pattern.slice(0, -2);
+            return modelId.startsWith(`${prefix}/`);
+        }
+        return false;
+    })
+        .map(([, options]) => options);
+}
+function mergeOptions(base, override) {
+    return {
+        ...base,
+        ...override,
+    };
+}
 export default function (pi) {
     async function registerRemoteProviders(ctx) {
         const settings = parseSettings();
-        if (!settings?.["remote-providers"]) {
-            ctx.ui.notify("No remote-providers configured in settings.json.", "error");
+        if (!settings?.["remote-providers"]?.providers) {
+            ctx.ui.notify("No providers configured in settings.json.", "error");
             return;
         }
         const requiredErrors = [];
         const optionalErrors = [];
-        for (const [serverName, config] of Object.entries(settings["remote-providers"])) {
+        for (const [serverName, config] of Object.entries(settings["remote-providers"]?.providers)) {
             try {
                 if (!config.url) {
                     if (config.optional) {
@@ -48,18 +68,30 @@ export default function (pi) {
                     ctx.ui.notify(`${serverName}: No models found`, "warning");
                     continue;
                 }
-                const models = modelData.map((m) => ({
-                    id: m.id,
-                    name: m.id,
-                    api: "openai-completions",
-                    provider: serverName,
-                    baseUrl: config.url,
-                    reasoning: false,
-                    input: ["text"],
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                    contextWindow: 200000,
-                    maxTokens: 8192,
-                }));
+                const globalModelOptions = settings["remote-providers"]?.modelOptions ?? {};
+                const models = modelData.map((m) => {
+                    const defaults = {
+                        maxTokens: 16384,
+                        reasoning: false,
+                        input: ["text"],
+                        contextWindow: 128000,
+                    };
+                    const globalOptions = matchPatterns(m.id, globalModelOptions).reduce(mergeOptions, {});
+                    const providerOptions = matchPatterns(m.id, config.modelOptions ?? {}).reduce(mergeOptions, {});
+                    const finalOptions = mergeOptions(mergeOptions(defaults, globalOptions), providerOptions);
+                    return {
+                        id: m.id,
+                        name: m.id,
+                        api: "openai-completions",
+                        provider: serverName,
+                        baseUrl: config.url,
+                        reasoning: finalOptions.reasoning ?? false,
+                        contextWindow: finalOptions.contextWindow ?? 128000,
+                        maxTokens: finalOptions.maxTokens ?? 16384,
+                        input: finalOptions.input ?? ["text"],
+                        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    };
+                });
                 const streamFn = createStreamWrapper(config.apiKey);
                 pi.registerProvider(serverName, {
                     baseUrl: config.url,

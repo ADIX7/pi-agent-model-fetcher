@@ -25,13 +25,78 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 ### Fields
 
-- `remote-providers` (required): Object containing a `providers` map
+- `remote-providers` (required): Object containing `providers` map and optional `model-options`
   - `providers` (required): Object with server names as keys
     - Each server config contains:
       - `url` (required): The URL of your vLLM instance
       - `apiKey` (optional): API key for authentication
       - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
+      - `model-options` (optional): Pattern-matched model options for this provider
+  - `model-options` (optional): Global pattern-matched model options
 - Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
+
+### Model Options
+
+Model options define model behavior. Available options:
+
+- `maxTokens` (optional): Maximum tokens per generation (default: 16384)
+- `contextWindow` (optional): Context window size in tokens (default: 128000)
+- `reasoning` (optional): Whether model has reasoning capabilities (default: false)
+- `input` (optional): Input modalities (default: `["text"]`)
+
+Options use pattern matching under `remote-providers.model-options` (global) or `remote-providers.providers.[name].model-options` (provider-specific):
+
+- **Exact match**: `"meta-llama/Meta-Llama-3.1-8B-Instruct": { ... }`
+- **Wildcard pattern**: `"Qwen/*": { ... }` matches any model starting with `Qwen/`
+- Wildcard `*` must be at the end only
+
+**Priority (lowest → highest):**
+1. Hardcoded defaults
+2. Global `model-options` patterns
+3. Provider `model-options` patterns
+
+Patterns match against model IDs from vLLM API (no provider prefix).
+
+### Global Model Options Example
+
+```json
+{
+  "remote-providers": {
+    "model-options": {
+      "meta-llama/Meta-Llama-3.1-8B-Instruct": {
+        "reasoning": true,
+        "contextWindow": 131072
+      },
+      "Qwen/*": {
+        "maxTokens": 65536
+      }
+    }
+  }
+}
+```
+
+### Provider-Specific Model Options Example
+
+```json
+{
+  "remote-providers": {
+    "providers": {
+      "grace": {
+        "url": "http://172.16.0.23:8000/v1",
+        "model-options": {
+          "meta-llama/Meta-Llama-3.1-8B-Instruct": {
+            "reasoning": true,
+            "contextWindow": 131072
+          },
+          "Qwen/*": {
+            "maxTokens": 65536
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ## Usage
 
@@ -100,6 +165,7 @@ Use this after:
 - Adding/removing servers from `settings.json`
 - Loading/unloading models on remote servers
 - Updating API keys
+- Changing model-options configurations
 
 ## Troubleshooting
 
