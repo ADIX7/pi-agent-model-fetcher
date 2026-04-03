@@ -25,14 +25,14 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 ### Fields
 
-- `remote-providers` (required): Object containing `providers` map and optional `model-options`
+- `remote-providers` (required): Object containing `providers` map and optional `modelOptions`
   - `providers` (required): Object with server names as keys
     - Each server config contains:
       - `url` (required): The URL of your vLLM instance
       - `apiKey` (optional): API key for authentication
       - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
-      - `model-options` (optional): Pattern-matched model options for this provider
-  - `model-options` (optional): Global pattern-matched model options
+      - `modelOptions` (optional): Pattern-matched model options for this provider
+  - `modelOptions` (optional): Global pattern-matched model options
 - Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
 
 ### Model Options
@@ -44,7 +44,7 @@ Model options define model behavior. Available options:
 - `reasoning` (optional): Whether model has reasoning capabilities (default: false)
 - `input` (optional): Input modalities (default: `["text"]`)
 
-Options use pattern matching under `remote-providers.model-options` (global) or `remote-providers.providers.[name].model-options` (provider-specific):
+Options use pattern matching under `remote-providers.modelOptions` (global) or `remote-providers.providers.[name].modelOptions` (provider-specific):
 
 - **Exact match**: `"meta-llama/Meta-Llama-3.1-8B-Instruct": { ... }`
 - **Wildcard pattern**: `"Qwen/*": { ... }` matches any model starting with `Qwen/`
@@ -52,17 +52,17 @@ Options use pattern matching under `remote-providers.model-options` (global) or 
 
 **Priority (lowest → highest):**
 1. Hardcoded defaults
-2. Global `model-options` patterns
-3. Provider `model-options` patterns
+2. Global `modelOptions` patterns
+3. Provider `modelOptions` patterns
 
 Patterns match against model IDs from vLLM API (no provider prefix).
 
-### Global Model Options Example
+### Global modelOptions Example
 
 ```json
 {
   "remote-providers": {
-    "model-options": {
+    "modelOptions": {
       "meta-llama/Meta-Llama-3.1-8B-Instruct": {
         "reasoning": true,
         "contextWindow": 131072
@@ -75,21 +75,25 @@ Patterns match against model IDs from vLLM API (no provider prefix).
 }
 ```
 
-### Provider-Specific Model Options Example
+### Provider-Specific modelOptions Example
 
 ```json
 {
   "remote-providers": {
     "providers": {
       "grace": {
-        "url": "http://172.16.0.23:8000/v1",
-        "model-options": {
+        "url": "http://192.168.0.100:8000/v1",
+        "modelOptions": {
           "meta-llama/Meta-Llama-3.1-8B-Instruct": {
             "reasoning": true,
             "contextWindow": 131072
           },
           "Qwen/*": {
-            "maxTokens": 65536
+            "reasoning": true,
+            "compat": {
+                "supportsDeveloperRole": false,
+                "thinkingFormat": "qwen"
+            }
           }
         }
       }
@@ -106,7 +110,7 @@ Patterns match against model IDs from vLLM API (no provider prefix).
 4. Use `/model` to select from available providers
 
 The plugin will:
-- Fetch available models from each server's `GET /v1/models`
+- Fetch available models from each server's `GET {url}/models`
 - Register each server as a distinct provider
 - Skip servers with no models
 - Report errors for unreachable servers
@@ -165,7 +169,7 @@ Use this after:
 - Adding/removing servers from `settings.json`
 - Loading/unloading models on remote servers
 - Updating API keys
-- Changing model-options configurations
+- Changing modelOptions configurations
 
 ## Troubleshooting
 

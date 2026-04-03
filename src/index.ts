@@ -11,11 +11,17 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
+interface CompatOptions {
+  supportsDeveloperRole?: boolean;
+  thinkingFormat?: "qwen" | "other";
+}
+
 interface ModelOptions {
   maxTokens?: number;
   contextWindow?: number;
   reasoning?: boolean;
   input?: Array<"text" | "image">;
+  compat?: CompatOptions;
 }
 
 type ModelOptionsMap = {
@@ -78,7 +84,7 @@ async function fetchVLLMModels(
     );
   }
 
-  return response.json().then(r => r.data) as Promise<VLLMModelInfo[]>;
+  return response.json().then((r) => r.data) as Promise<VLLMModelInfo[]>;
 }
 
 function matchPatterns(
@@ -91,9 +97,9 @@ function matchPatterns(
         return true;
       }
 
-      if (pattern.endsWith("/*")) {
-        const prefix = pattern.slice(0, -2);
-        return modelId.startsWith(`${prefix}/`);
+      if (pattern.endsWith("*")) {
+        const prefix = pattern.slice(0, -1);
+        return modelId.startsWith(`${prefix}`);
       }
 
       return false;
@@ -108,19 +114,16 @@ function mergeOptions(
   return {
     ...base,
     ...override,
+    compat: base.compat ? mergeOptions(base.compat, override.compat ?? {}) as CompatOptions : override.compat,
   };
 }
 
 export default function (pi: ExtensionAPI) {
-
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
 
     if (!settings?.["remote-providers"]?.providers) {
-      ctx.ui.notify(
-        "No providers configured in settings.json.",
-        "error",
-      );
+      ctx.ui.notify("No providers configured in settings.json.", "error");
       return;
     }
 
@@ -150,13 +153,6 @@ export default function (pi: ExtensionAPI) {
           settings["remote-providers"]?.modelOptions ?? {};
 
         const models: Model<Api>[] = modelData.map((m) => {
-          const defaults: ModelOptions = {
-            maxTokens: 16384,
-            reasoning: false,
-            input: ["text"],
-            contextWindow: 128000,
-          };
-
           const globalOptions = matchPatterns(m.id, globalModelOptions).reduce(
             mergeOptions,
             {},
@@ -165,10 +161,10 @@ export default function (pi: ExtensionAPI) {
             m.id,
             config.modelOptions ?? {},
           ).reduce(mergeOptions, {});
-          const finalOptions = mergeOptions(
-            mergeOptions(defaults, globalOptions),
-            providerOptions,
-          );
+          const finalOptions = mergeOptions(globalOptions, providerOptions);
+
+
+          ctx.ui.notify(`settings for ${m.id} ${JSON.stringify(finalOptions)} ${finalOptions.reasoning ?? true}`, "warning");
 
           return {
             id: m.id,
@@ -180,6 +176,7 @@ export default function (pi: ExtensionAPI) {
             contextWindow: finalOptions.contextWindow ?? 128000,
             maxTokens: finalOptions.maxTokens ?? 16384,
             input: finalOptions.input ?? ["text"],
+            compat: finalOptions.compat,
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           };
         });
