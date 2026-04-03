@@ -114,7 +114,19 @@ function mergeOptions(
   };
 }
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI) {
+  async function loadRemoteProviders(
+    settings: Settings | null,
+    notifyError: (msg: string) => void,
+    notifyInfo: (msg: string) => void,
+  ): Promise<void> {
+    await registerProviders(
+      settings?.["remote-providers"],
+      notifyError,
+      notifyInfo,
+    );
+  }
+
   async function registerProviders(
     providersConfig: Settings["remote-providers"],
     notifyError: (msg: string) => void,
@@ -211,8 +223,8 @@ export default function (pi: ExtensionAPI) {
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
-    await registerProviders(
-      settings?.["remote-providers"],
+    await loadRemoteProviders(
+      settings,
       (msg) => ctx.ui.notify(msg, "error"),
       (msg) => ctx.ui.notify(msg, "info"),
     );
@@ -232,18 +244,12 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Register providers immediately on extension load
-  (async () => {
+  try {
     const settings = parseSettings();
-    try {
-      await registerProviders(
-        settings?.["remote-providers"],
-				console.error,
-				console.info,
-      );
-    } catch (err) {
-      console.error("Failed to load remote providers:", err);
-    }
-  })();
+    await loadRemoteProviders(settings, console.error, () => {});
+  } catch (err) {
+    console.error("Failed to load remote providers:", err);
+  }
 
   // Reload command with full UI feedback
   pi.registerCommand("reload-remote-providers", {
