@@ -115,11 +115,13 @@ function mergeOptions(
 }
 
 export default function (pi: ExtensionAPI) {
-  async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
-    const settings = parseSettings();
-
-    if (!settings?.["remote-providers"]?.providers) {
-      ctx.ui.notify("No providers configured in settings.json.", "error");
+  async function registerProviders(
+    providersConfig: Settings["remote-providers"],
+    notifyError: (msg: string) => void,
+    notifyInfo: (msg: string) => void,
+  ): Promise<void> {
+    if (!providersConfig?.providers) {
+      notifyError("No providers configured in settings.json.");
       return;
     }
 
@@ -127,7 +129,7 @@ export default function (pi: ExtensionAPI) {
     const optionalErrors: string[] = [];
 
     for (const [serverName, config] of Object.entries(
-      settings["remote-providers"]?.providers,
+      providersConfig.providers,
     )) {
       try {
         if (!config.url) {
@@ -141,12 +143,11 @@ export default function (pi: ExtensionAPI) {
         const modelData = await fetchVLLMModels(config.url, config.apiKey);
 
         if (modelData.length === 0) {
-          ctx.ui.notify(`${serverName}: No models found`, "warning");
+          notifyInfo(`${serverName}: No models found`);
           continue;
         }
 
-        const globalModelOptions =
-          settings["remote-providers"]?.modelOptions ?? {};
+        const globalModelOptions = providersConfig.modelOptions ?? {};
 
         const models: Model<Api>[] = modelData.map((m) => {
           const globalOptions = matchPatterns(m.id, globalModelOptions).reduce(
@@ -159,8 +160,9 @@ export default function (pi: ExtensionAPI) {
           ).reduce(mergeOptions, {});
           const finalOptions = mergeOptions(globalOptions, providerOptions);
 
-
-          ctx.ui.notify(`settings for ${m.id} ${JSON.stringify(finalOptions)} ${finalOptions.reasoning ?? true}`, "warning");
+          notifyInfo(
+            `settings for ${m.id} ${JSON.stringify(finalOptions)} ${finalOptions.reasoning ?? true}`,
+          );
 
           return {
             id: m.id,
@@ -187,10 +189,7 @@ export default function (pi: ExtensionAPI) {
           streamSimple: streamFn,
         });
 
-        ctx.ui.notify(
-          `${serverName}: Registered ${models.length} model(s)`,
-          "info",
-        );
+        notifyInfo(`${serverName}: Registered ${models.length} model(s)`);
       } catch (error) {
         const errorMsg = `${serverName}: ${error instanceof Error ? error.message : String(error)}`;
         if (config.optional) {
@@ -206,8 +205,17 @@ export default function (pi: ExtensionAPI) {
       if (optionalErrors.length > 0) {
         message += `\n\nOptional providers that failed:\n${optionalErrors.join("\n")}`;
       }
-      ctx.ui.notify(message, "error");
+      notifyError(message);
     }
+  }
+
+  async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
+    const settings = parseSettings();
+    await registerProviders(
+      settings?.["remote-providers"],
+      (msg) => ctx.ui.notify(msg, "error"),
+      (msg) => ctx.ui.notify(msg, "info"),
+    );
   }
 
   function createStreamWrapper(apiKey?: string) {
@@ -223,12 +231,21 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  // Register providers from settings
-  pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
-    await registerRemoteProviders(ctx);
-  });
+  // Register providers immediately on extension load
+  (async () => {
+    const settings = parseSettings();
+    try {
+      await registerProviders(
+        settings?.["remote-providers"],
+				console.error,
+				console.info,
+      );
+    } catch (err) {
+      console.error("Failed to load remote providers:", err);
+    }
+  })();
 
-  // Reload command
+  // Reload command with full UI feedback
   pi.registerCommand("reload-remote-providers", {
     description: "Reload remote vLLM providers without restart",
     handler: async (_args, ctx) => {
