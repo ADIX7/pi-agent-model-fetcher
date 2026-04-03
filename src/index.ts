@@ -4,6 +4,7 @@ import {
   type Context,
   type Model,
   type SimpleStreamOptions,
+  type OpenAICompletionsCompat,
 } from "@mariozechner/pi-ai";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import type {
@@ -11,17 +12,12 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
-interface CompatOptions {
-  supportsDeveloperRole?: boolean;
-  thinkingFormat?: "qwen" | "other";
-}
-
 interface ModelOptions {
   maxTokens?: number;
   contextWindow?: number;
   reasoning?: boolean;
   input?: Array<"text" | "image">;
-  compat?: CompatOptions;
+  compat?: OpenAICompletionsCompat;
 }
 
 type ModelOptionsMap = {
@@ -114,7 +110,7 @@ function mergeOptions(
   return {
     ...base,
     ...override,
-    compat: base.compat ? mergeOptions(base.compat, override.compat ?? {}) as CompatOptions : override.compat,
+    compat: { ...base.compat, ...override.compat },
   };
 }
 
