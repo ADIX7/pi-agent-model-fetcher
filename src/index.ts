@@ -19,7 +19,9 @@ interface ServerConfig {
 
 interface Settings {
   "remote-providers"?: {
-    [name: string]: ServerConfig;
+    providers: {
+      [name: string]: ServerConfig;
+    };
   };
 }
 
@@ -71,9 +73,9 @@ export default function (pi: ExtensionAPI) {
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
 
-    if (!settings?.["remote-providers"]) {
+    if (!settings?.["remote-providers"]?.providers) {
       ctx.ui.notify(
-        "No remote-providers configured in settings.json.",
+        "No providers configured in settings.json.",
         "error",
       );
       return;
@@ -83,7 +85,7 @@ export default function (pi: ExtensionAPI) {
     const optionalErrors: string[] = [];
 
     for (const [serverName, config] of Object.entries(
-      settings["remote-providers"],
+      settings["remote-providers"]?.providers,
     )) {
       try {
         if (!config.url) {

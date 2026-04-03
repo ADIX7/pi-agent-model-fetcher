@@ -9,13 +9,15 @@ Add the following to your `~/.pi/agent/settings.json`:
 ```json
 {
   "remote-providers": {
-    "local": {
-      "url": "http://localhost:8000",
-      "apiKey": "your-api-key"
-    },
-    "remote-cluster": {
-      "url": "https://vllm.company.com",
-      "apiKey": "another-key"
+    "providers": {
+      "local": {
+        "url": "http://localhost:8000",
+        "apiKey": "your-api-key"
+      },
+      "remote-cluster": {
+        "url": "https://vllm.company.com",
+        "apiKey": "another-key"
+      }
     }
   }
 }
@@ -23,11 +25,12 @@ Add the following to your `~/.pi/agent/settings.json`:
 
 ### Fields
 
-- `remote-providers` (required): Object with server names as keys
-  - Each server config contains:
-    - `url` (required): The URL of your vLLM instance
-    - `apiKey` (optional): API key for authentication
-    - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
+- `remote-providers` (required): Object containing a `providers` map
+  - `providers` (required): Object with server names as keys
+    - Each server config contains:
+      - `url` (required): The URL of your vLLM instance
+      - `apiKey` (optional): API key for authentication
+      - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
 - Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
 
 ## Usage
@@ -62,14 +65,16 @@ Set `optional: true` for providers that shouldn't block startup if unavailable:
 ```json
 {
   "remote-providers": {
-    "local": {
-      "url": "http://localhost:8000",
-      "apiKey": "your-api-key"
-    },
-    "backup": {
-      "url": "https://backup-vllm.example.com",
-      "apiKey": "backup-key",
-      "optional": true
+    "providers": {
+      "local": {
+        "url": "http://localhost:8000",
+        "apiKey": "your-api-key"
+      },
+      "backup": {
+        "url": "https://backup-vllm.example.com",
+        "apiKey": "backup-key",
+        "optional": true
+      }
     }
   }
 }
@@ -98,7 +103,7 @@ Use this after:
 
 ## Troubleshooting
 
-- **Error: "No remote-providers configured"**: Add `remote-providers` object to `~/.pi/agent/settings.json`
+- **Error: "No providers configured in settings.json."**: Add `remote-providers.providers` to `~/.pi/agent/settings.json`
 - **Error: "Failed to register N server(s)"**: Check that unreachable servers are running and URLs are correct
 - **Warning: "No models found"**: Server is reachable but has no models loaded
 - **Reload not working**: Ensure you're using pi agent version 0.51+ which supports custom commands
@@ -106,7 +111,7 @@ Use this after:
 ## How It Works
 
 1. On `session_start`, reads `~/.pi/agent/settings.json`
-2. Iterates over `remote-providers` object
+2. Iterates over the `remote-providers.providers` object
 3. Fetches models from each server's `/v1/models` endpoint
 4. Skips servers with no models (warning only)
 5. Wraps `streamSimpleOpenAICompletions` with server-specific API key
