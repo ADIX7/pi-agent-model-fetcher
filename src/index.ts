@@ -48,6 +48,10 @@ interface VLLMModelInfo {
   max_model_len?: number; // Optional: context window size from vLLM
 }
 
+// Collect startup messages for display via pi.notify
+const startupMessages: Array<{ type: "error"; message: string }> = [];
+let hasDisplayedStartupMessages = false;
+
 function parseSettings(): Settings | null {
   try {
     const fs = require("fs");
@@ -115,22 +119,20 @@ function mergeOptions(
 }
 
 export default async function (pi: ExtensionAPI) {
+  // Collect startup messages instead of logging to console
+  const collectError = (msg: string) =>
+    startupMessages.push({ type: "error", message: msg });
+
   async function loadRemoteProviders(
     settings: Settings | null,
     notifyError: (msg: string) => void,
-    notifyInfo: (msg: string) => void,
   ): Promise<void> {
-    await registerProviders(
-      settings?.["remote-providers"],
-      notifyError,
-      notifyInfo,
-    );
+    await registerProviders(settings?.["remote-providers"], notifyError);
   }
 
   async function registerProviders(
     providersConfig: Settings["remote-providers"],
     notifyError: (msg: string) => void,
-    notifyInfo: (msg: string) => void,
   ): Promise<void> {
     if (!providersConfig?.providers) {
       notifyError("No providers configured in settings.json.");
@@ -160,7 +162,6 @@ export default async function (pi: ExtensionAPI) {
         const modelData = await fetchVLLMModels(config.url, config.apiKey);
 
         if (modelData.length === 0) {
-          notifyInfo(`${serverName}: No models found`);
           return null;
         }
 
@@ -176,10 +177,6 @@ export default async function (pi: ExtensionAPI) {
             config.modelOptions ?? {},
           ).reduce(mergeOptions, {});
           const finalOptions = mergeOptions(globalOptions, providerOptions);
-
-          notifyInfo(
-            `settings for ${m.id} ${JSON.stringify(finalOptions)} ${finalOptions.reasoning ?? true}`,
-          );
 
           return {
             id: m.id,
@@ -206,7 +203,6 @@ export default async function (pi: ExtensionAPI) {
           streamSimple: streamFn,
         });
 
-        notifyInfo(`${serverName}: Registered ${models.length} model(s)`);
         return null;
       } catch (error) {
         return `${serverName}: ${error instanceof Error ? error.message : String(error)}`;
@@ -220,15 +216,6 @@ export default async function (pi: ExtensionAPI) {
     ): void => {
       if (providers.length === 0) {
         return;
-      }
-
-      const loadedCount = providers.length - errors.length;
-      const phaseLabel = phaseName === "required" ? "Required" : "Optional";
-
-      if (loadedCount > 0) {
-        notifyInfo(
-          `${phaseLabel} providers loaded: ${loadedCount}/${providers.length} server(s)`,
-        );
       }
 
       if (errors.length > 0) {
@@ -288,11 +275,7 @@ export default async function (pi: ExtensionAPI) {
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
     const settings = parseSettings();
-    await loadRemoteProviders(
-      settings,
-      (msg) => ctx.ui.notify(msg, "error"),
-      (msg) => ctx.ui.notify(msg, "info"),
-    );
+    await loadRemoteProviders(settings, (msg) => ctx.ui.notify(msg, "error"));
   }
 
   function createStreamWrapper(apiKey?: string) {
@@ -311,10 +294,34 @@ export default async function (pi: ExtensionAPI) {
   // Register providers immediately on extension load
   try {
     const settings = parseSettings();
-    await loadRemoteProviders(settings, console.error, console.info);
+    await loadRemoteProviders(settings, collectError);
   } catch (err) {
-    console.error("Failed to load remote providers:", err);
+    collectError(
+      `Failed to load remote providers: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
+
+  // Display collected startup messages on first session start
+  // We only show them once by checking the flag before display
+  pi.on("session_start", async (_event, ctx) => {
+    if (hasDisplayedStartupMessages) {
+      return;
+    }
+
+    const errors = startupMessages
+      .filter((m) => m.type === "error")
+      .map((m) => m.message);
+
+    startupMessages.length = 0; // Clear the array
+    hasDisplayedStartupMessages = true;
+
+    if (errors.length > 0) {
+      ctx.ui.notify(
+        `Remote model loading errors:\n${errors.join("\n")}`,
+        "error",
+      );
+    }
+  });
 
   // Reload command with full UI feedback
   pi.registerCommand("reload-remote-providers", {
