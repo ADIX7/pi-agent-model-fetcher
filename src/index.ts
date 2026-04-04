@@ -28,6 +28,7 @@ interface ServerConfig {
   url: string;
   apiKey?: string;
   optional?: boolean;
+  disabled?: boolean;
   modelOptions?: ModelOptionsMap;
 }
 
@@ -140,10 +141,13 @@ export default async function (pi: ExtensionAPI) {
     }
 
     const providerEntries = Object.entries(providersConfig.providers);
-    const requiredProviders = providerEntries.filter(
+    const activeProviders = providerEntries.filter(
+      ([, config]) => config.disabled !== true,
+    );
+    const requiredProviders = activeProviders.filter(
       ([, config]) => config.optional !== true,
     );
-    const optionalProviders = providerEntries.filter(
+    const optionalProviders = activeProviders.filter(
       ([, config]) => config.optional === true,
     );
 

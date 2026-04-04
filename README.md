@@ -31,6 +31,7 @@ Add the following to your `~/.pi/agent/settings.json`:
       - `url` (required): The URL of your vLLM instance
       - `apiKey` (optional): API key for authentication
       - `optional` (optional): If true, server errors won't block registration. Useful for non-critical providers.
+      - `disabled` (optional): If true, the provider is completely skipped. Useful for temporarily disabling a provider without removing its configuration.
       - `modelOptions` (optional): Pattern-matched model options for this provider
   - `modelOptions` (optional): Global pattern-matched model options
 - Server names become provider prefixes (e.g., `local/model-name`, `remote-cluster/model-name`)
@@ -150,6 +151,30 @@ Set `optional: true` for providers that shouldn't block startup if unavailable:
 ```
 
 With `optional: true`, the backup provider will be skipped silently if unreachable, without showing error notifications.
+
+### Disabled Providers
+
+Set `disabled: true` to completely skip a provider without removing its configuration:
+
+```json
+{
+  "remote-providers": {
+    "providers": {
+      "local": {
+        "url": "http://localhost:8000",
+        "apiKey": "your-api-key"
+      },
+      "maintenance": {
+        "url": "https://vllm.maintenance.example.com",
+        "apiKey": "temp-key",
+        "disabled": true
+      }
+    }
+  }
+}
+```
+
+Disabled providers are completely ignored during startup and reload. They do not appear in the UI and never generate errors.
 
 ## Reload Providers
 
