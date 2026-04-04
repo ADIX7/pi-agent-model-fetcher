@@ -137,26 +137,31 @@ export default async function (pi: ExtensionAPI) {
       return;
     }
 
-    const requiredErrors: string[] = [];
-    const optionalErrors: string[] = [];
+    const providerEntries = Object.entries(providersConfig.providers);
+    const requiredProviders = providerEntries.filter(
+      ([, config]) => config.optional !== true,
+    );
+    const optionalProviders = providerEntries.filter(
+      ([, config]) => config.optional === true,
+    );
 
-    for (const [serverName, config] of Object.entries(
-      providersConfig.providers,
-    )) {
-      try {
-        if (!config.url) {
-          if (config.optional) {
-            continue;
-          }
-          requiredErrors.push(`${serverName}: URL not set`);
-          continue;
+    const registerProvider = async (
+      serverName: string,
+      config: ServerConfig,
+    ): Promise<string | null> => {
+      if (!config.url) {
+        if (config.optional) {
+          return null;
         }
+        return `${serverName}: URL not set`;
+      }
 
+      try {
         const modelData = await fetchVLLMModels(config.url, config.apiKey);
 
         if (modelData.length === 0) {
           notifyInfo(`${serverName}: No models found`);
-          continue;
+          return null;
         }
 
         const globalModelOptions = providersConfig.modelOptions ?? {};
@@ -202,23 +207,84 @@ export default async function (pi: ExtensionAPI) {
         });
 
         notifyInfo(`${serverName}: Registered ${models.length} model(s)`);
+        return null;
       } catch (error) {
-        const errorMsg = `${serverName}: ${error instanceof Error ? error.message : String(error)}`;
-        if (config.optional) {
-          optionalErrors.push(errorMsg);
-        } else {
-          requiredErrors.push(errorMsg);
-        }
+        return `${serverName}: ${error instanceof Error ? error.message : String(error)}`;
       }
-    }
+    };
 
-    if (requiredErrors.length > 0) {
-      let message = `Failed to register ${requiredErrors.length} server(s):\n${requiredErrors.join("\n")}`;
-      if (optionalErrors.length > 0) {
-        message += `\n\nOptional providers that failed:\n${optionalErrors.join("\n")}`;
+    const reportPhaseResult = (
+      phaseName: "required" | "optional",
+      providers: Array<[string, ServerConfig]>,
+      errors: string[],
+    ): void => {
+      if (providers.length === 0) {
+        return;
       }
-      notifyError(message);
-    }
+
+      const loadedCount = providers.length - errors.length;
+      const phaseLabel = phaseName === "required" ? "Required" : "Optional";
+
+      if (loadedCount > 0) {
+        notifyInfo(
+          `${phaseLabel} providers loaded: ${loadedCount}/${providers.length} server(s)`,
+        );
+      }
+
+      if (errors.length > 0) {
+        notifyError(
+          `Failed to register ${errors.length} ${phaseName} server(s):\n${errors.join("\n")}`,
+        );
+      }
+    };
+
+    const loadProviderPhaseBlocking = async (
+      phaseName: "required" | "optional",
+      providers: Array<[string, ServerConfig]>,
+    ): Promise<void> => {
+      if (providers.length === 0) {
+        return;
+      }
+
+      const errors = (
+        await Promise.all(
+          providers.map(([serverName, config]) =>
+            registerProvider(serverName, config),
+          ),
+        )
+      ).filter((error): error is string => error !== null);
+
+      reportPhaseResult(phaseName, providers, errors);
+    };
+
+    const loadProviderPhaseInBackground = (
+      phaseName: "required" | "optional",
+      providers: Array<[string, ServerConfig]>,
+    ): void => {
+      if (providers.length === 0) {
+        return;
+      }
+
+      void Promise.all(
+        providers.map(([serverName, config]) =>
+          registerProvider(serverName, config),
+        ),
+      )
+        .then((results) => {
+          const errors = results.filter(
+            (error): error is string => error !== null,
+          );
+          reportPhaseResult(phaseName, providers, errors);
+        })
+        .catch((error) => {
+          notifyError(
+            `Failed to finish loading ${phaseName} providers: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    };
+
+    await loadProviderPhaseBlocking("required", requiredProviders);
+    loadProviderPhaseInBackground("optional", optionalProviders);
   }
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
@@ -246,7 +312,7 @@ export default async function (pi: ExtensionAPI) {
   // Register providers immediately on extension load
   try {
     const settings = parseSettings();
-    await loadRemoteProviders(settings, console.error, () => {});
+    await loadRemoteProviders(settings, console.error, console.info);
   } catch (err) {
     console.error("Failed to load remote providers:", err);
   }
