@@ -257,30 +257,29 @@ export default async function (pi: ExtensionAPI) {
       reportPhaseResult(phaseName, providers, errors);
     };
 
-    const loadProviderPhaseInBackground = (
+    const loadProviderPhaseInBackground = async (
       phaseName: "required" | "optional",
       providers: Array<[string, ServerConfig]>,
-    ): void => {
+    ): Promise<void> => {
       if (providers.length === 0) {
         return;
       }
 
-      void Promise.all(
-        providers.map(([serverName, config]) =>
-          registerProvider(serverName, config),
-        ),
-      )
-        .then((results) => {
-          const errors = results.filter(
-            (error): error is string => error !== null,
-          );
-          reportPhaseResult(phaseName, providers, errors);
-        })
-        .catch((error) => {
-          notifyError(
-            `Failed to finish loading ${phaseName} providers: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
+      try {
+        const results = await Promise.all(
+          providers.map(([serverName, config]) =>
+            registerProvider(serverName, config),
+          ),
+        );
+        const errors = results.filter(
+          (error): error is string => error !== null,
+        );
+        reportPhaseResult(phaseName, providers, errors);
+      } catch (error) {
+        notifyError(
+          `Failed to finish loading ${phaseName} providers: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     };
 
     await loadProviderPhaseBlocking("required", requiredProviders);
