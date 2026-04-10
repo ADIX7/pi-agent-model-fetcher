@@ -20,6 +20,10 @@ interface ModelOptions {
   compat?: OpenAICompletionsCompat;
 }
 
+interface FetchTimeoutOptions {
+  timeoutMs: number;
+}
+
 type ModelOptionsMap = {
   [pattern: string]: ModelOptions;
 };
@@ -30,6 +34,7 @@ interface ServerConfig {
   optional?: boolean;
   disabled?: boolean;
   modelOptions?: ModelOptionsMap;
+  fetchTimeout?: FetchTimeoutOptions;
 }
 
 interface Settings {
@@ -68,6 +73,7 @@ function parseSettings(): Settings | null {
 async function fetchVLLMModels(
   baseUrl: string,
   apiKey?: string,
+  timeoutMs?: number,
 ): Promise<VLLMModelInfo[]> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -77,15 +83,28 @@ async function fetchVLLMModels(
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(`${baseUrl}/models`, { headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch models: ${response.status} ${response.statusText}`,
-    );
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch models: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return response.json().then((r) => r.data) as Promise<VLLMModelInfo[]>;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
   }
-
-  return response.json().then((r) => r.data) as Promise<VLLMModelInfo[]>;
 }
 
 function matchPatterns(
@@ -154,6 +173,7 @@ export default async function (pi: ExtensionAPI) {
     const registerProvider = async (
       serverName: string,
       config: ServerConfig,
+      required: boolean,
     ): Promise<string | null> => {
       if (!config.url) {
         if (config.optional) {
@@ -163,7 +183,13 @@ export default async function (pi: ExtensionAPI) {
       }
 
       try {
-        const modelData = await fetchVLLMModels(config.url, config.apiKey);
+        const timeoutMs = config.fetchTimeout
+          ? config.fetchTimeout.timeoutMs
+          : required
+          ? 1000 /* 1s for required providers */
+          : 500 /* 500ms for optional providers */;
+
+        const modelData = await fetchVLLMModels(config.url, config.apiKey, timeoutMs);
 
         if (modelData.length === 0) {
           return null;
@@ -244,7 +270,7 @@ export default async function (pi: ExtensionAPI) {
       const errors = (
         await Promise.all(
           providers.map(([serverName, config]) =>
-            registerProvider(serverName, config),
+            registerProvider(serverName, config, true),
           ),
         )
       ).filter((error): error is string => error !== null);
@@ -263,7 +289,7 @@ export default async function (pi: ExtensionAPI) {
       try {
         const results = await Promise.all(
           providers.map(([serverName, config]) =>
-            registerProvider(serverName, config),
+            registerProvider(serverName, config, false),
           ),
         );
         const errors = results.filter(
