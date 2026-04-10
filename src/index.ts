@@ -186,10 +186,14 @@ export default async function (pi: ExtensionAPI) {
         const timeoutMs = config.fetchTimeout
           ? config.fetchTimeout.timeoutMs
           : required
-          ? 1000 /* 1s for required providers */
-          : 500 /* 500ms for optional providers */;
+            ? 1000 /* 1s for required providers */
+            : 500; /* 500ms for optional providers */
 
-        const modelData = await fetchVLLMModels(config.url, config.apiKey, timeoutMs);
+        const modelData = await fetchVLLMModels(
+          config.url,
+          config.apiKey,
+          timeoutMs,
+        );
 
         if (modelData.length === 0) {
           return null;
@@ -208,9 +212,8 @@ export default async function (pi: ExtensionAPI) {
           ).reduce(mergeOptions, {});
           const finalOptions = mergeOptions(globalOptions, providerOptions);
 
-          const contextWindow = m.max_model_len ??
-            finalOptions.contextWindow ??
-            128000;
+          const contextWindow =
+            m.max_model_len ?? finalOptions.contextWindow ?? 128000;
 
           return {
             id: m.id,
@@ -303,8 +306,10 @@ export default async function (pi: ExtensionAPI) {
       }
     };
 
-    await loadProviderPhaseBlocking("required", requiredProviders);
-    loadProviderPhaseInBackground("optional", optionalProviders);
+    await Promise.all([
+      loadProviderPhaseBlocking("required", requiredProviders),
+      loadProviderPhaseInBackground("optional", optionalProviders),
+    ]);
   }
 
   async function registerRemoteProviders(ctx: ExtensionContext): Promise<void> {
