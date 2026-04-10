@@ -182,6 +182,10 @@ export default async function (pi: ExtensionAPI) {
           ).reduce(mergeOptions, {});
           const finalOptions = mergeOptions(globalOptions, providerOptions);
 
+          const contextWindow = m.max_model_len ??
+            finalOptions.contextWindow ??
+            128000;
+
           return {
             id: m.id,
             name: m.id,
@@ -189,7 +193,7 @@ export default async function (pi: ExtensionAPI) {
             provider: serverName,
             baseUrl: config.url,
             reasoning: finalOptions.reasoning ?? false,
-            contextWindow: finalOptions.contextWindow ?? 128000,
+            contextWindow,
             maxTokens: finalOptions.maxTokens ?? 16384,
             input: finalOptions.input ?? ["text"],
             compat: finalOptions.compat,

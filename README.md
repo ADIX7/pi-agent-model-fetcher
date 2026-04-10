@@ -51,7 +51,13 @@ Options use pattern matching under `remote-providers.modelOptions` (global) or `
 - **Wildcard pattern**: `"Qwen/*": { ... }` matches any model starting with `Qwen/`
 - Wildcard `*` must be at the end only
 
-**Priority (lowest → highest):**
+**Context Window Priority (lowest → highest):**
+1. `max_model_len` from vLLM API response (server-specified)
+2. Global `modelOptions` patterns
+3. Provider `modelOptions` patterns
+4. Hardcoded fallback (`128,000`)
+
+**Other options** (`maxTokens`, `reasoning`, `input`) use pattern priority:
 1. Hardcoded defaults
 2. Global `modelOptions` patterns
 3. Provider `modelOptions` patterns
