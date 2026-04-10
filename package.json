@@ -1,5 +1,5 @@
 {
-	"name": "pi-vllm-model-fetcher",
+	"name": "@adix7/pi-vllm-model-fetcher",
 	"version": "1.0.0",
 	"type": "module",
 	"description": "Pi agent plugin that fetches models from a local vLLM instance",
@@ -16,13 +16,13 @@
 	},
 	"keywords": [],
 	"author": "",
-	"license": "ISC",
+	"license": "MIT",
 	"peerDependencies": {
 		"@mariozechner/pi-coding-agent": "*"
 	},
 	"devDependencies": {
-		"@types/node": "^25.5.0",
-		"@mariozechner/pi-coding-agent": "^0.51.1",
-		"typescript": "^6.0.2"
+		"@types/node": "^26.6.6",
+		"@mariozechner/pi-coding-agent": "^0.73.1",
+		"typescript": "^7.0.2"
 	}
 }
